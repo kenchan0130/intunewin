@@ -1,0 +1,9 @@
+excludes:
+# tagpr require this credential
+- policy_name: checkout_persist_credentials_should_be_false
+  workflow_file_path: .github/workflows/release.yml
+  job_name: tagpr
+# goreleaser require this credential
+- policy_name: checkout_persist_credentials_should_be_false
+  workflow_file_path: .github/workflows/release.yml
+  job_name: release

@@ -49,7 +49,7 @@ func UnpackReaderToZip(input io.Reader) (io.Reader, error) {
 	}
 
 	if metaData == nil {
-		return nil, fmt.Errorf("Detection.xml not found in intunewin package")
+		return nil, fmt.Errorf("detection.xml not found in intunewin package")
 	}
 	if encryptedData == nil {
 		return nil, fmt.Errorf("encrypted contents not found in intunewin package")
@@ -81,11 +81,15 @@ func UnpackReaderToZip(input io.Reader) (io.Reader, error) {
 func readZipFileFromReader(file *zip.File) ([]byte, error) {
 	rc, err := file.Open()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open zip file: %w", err)
 	}
 	defer rc.Close()
 
-	return io.ReadAll(rc)
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read zip file contents: %w", err)
+	}
+	return data, nil
 }
 
 // Unpack extracts an intunewin file to a folder
@@ -130,6 +134,7 @@ func Unpack(inputFile, outputFolder string) error {
 
 	// Extract files
 	for _, file := range zipContentReader.File {
+		// #nosec G305 -- Path traversal check is performed below
 		destPath := filepath.Join(outputFolder, file.Name)
 
 		// Check for directory traversal
@@ -161,7 +166,10 @@ func Unpack(inputFile, outputFolder string) error {
 				return fmt.Errorf("failed to open file %s: %w", file.Name, err)
 			}
 
-			if _, err := io.Copy(destFile, rc); err != nil {
+			// Decompression bomb protection: limit read size to uncompressed size
+			// UncompressedSize64 is within int64 range for valid zip files
+			limitedReader := io.LimitReader(rc, int64(file.UncompressedSize64)+1) // #nosec G110 G115
+			if _, err := io.Copy(destFile, limitedReader); err != nil {
 				rc.Close()
 				destFile.Close()
 				return fmt.Errorf("failed to write file %s: %w", file.Name, err)

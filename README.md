@@ -11,18 +11,26 @@ A cross-platform CLI tool for creating and extracting Microsoft Intune `.intunew
 
 ## Installation
 
-### From Source
+### Download from Releases (Recommended)
+
+Download the latest binary for your platform from the [Releases](https://github.com/kenchan0130/intunewin/releases) page.
+
+### Using go install
 
 ```bash
 go install github.com/kenchan0130/intunewin/cmd/intunewin@latest
 ```
+
+Make sure your `$GOPATH/bin` or `$GOBIN` is in your `$PATH`.
 
 ### Build from Source
 
 ```bash
 git clone https://github.com/kenchan0130/intunewin.git
 cd intunewin
-go build -o intunewin cmd/intunewin/main.go
+make build
+# Or manually:
+# go build -o bin/intunewin cmd/intunewin/main.go
 ```
 
 ## Usage

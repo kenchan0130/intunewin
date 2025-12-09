@@ -28,7 +28,6 @@ builds:
 
 archives:
   - id: intunewin
-    format: tar.gz
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
@@ -40,6 +39,10 @@ archives:
     format_overrides:
       - goos: windows
         format: zip
+      - goos: linux
+        format: tar.gz
+      - goos: darwin
+        format: tar.gz
     files:
       - LICENSE
       - README.md
@@ -48,7 +51,7 @@ checksum:
   name_template: 'checksums.txt'
 
 snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 
 changelog:
   sort: asc
@@ -62,6 +65,7 @@ changelog:
       - Merge branch
 
 release:
+  use_existing_draft: true
   github:
     owner: kenchan0130
     name: intunewin

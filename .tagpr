@@ -3,4 +3,4 @@
   releaseBranch = main
   versionFile = version
   changelog = true
-  release = true
+  release = draft

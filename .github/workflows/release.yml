@@ -39,7 +39,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: goreleaser/goreleaser-action@9c0c3c6b0f8a2ccfae6677662380a7fff9d0c8d3 # v6.1.0
+      - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
         with:
           distribution: goreleaser
           version: '~> v2'

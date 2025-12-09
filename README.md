@@ -139,46 +139,10 @@ The API is designed for maximum flexibility:
 
 The `.intunewin` file is a ZIP archive containing:
 
-1. **metadata.json**: Contains encryption keys, file sizes, and hash information
-2. **contents**: The encrypted and compressed source folder
-
-### Encryption
-
-- **Algorithm**: AES-256-CBC
-- **Key Size**: 256 bits
-- **Authentication**: HMAC-SHA256
-- **File Digest**: SHA-256
-
-The encryption follows the format:
-```
-[HMAC (32 bytes)] [IV (16 bytes)] [Encrypted Data (variable)]
-```
-
-### Metadata Structure
-
-```json
-{
-  "fileName": "myapp",
-  "unencryptedFileSize": 12345,
-  "encryptedFileSize": 12800,
-  "encryptionInfo": {
-    "EncryptionKey": [base64-encoded],
-    "MacKey": [base64-encoded],
-    "InitializationVector": [base64-encoded],
-    "Mac": [base64-encoded],
-    "FileDigest": [base64-encoded],
-    "ProfileIdentifier": "ProfileVersion1",
-    "FileDigestAlgorithm": "SHA256"
-  },
-  "createdAt": "2025-12-09T22:30:00Z"
-}
-```
+1. `Metadata/Detection.xml`: Contains encryption keys, file sizes, and hash information
+2. `Contents/IntunePackage.intunewin`: The encrypted and compressed source folder
 
 ## Development
-
-### Prerequisites
-
-- Go 1.20 or higher
 
 ### Running Tests
 
@@ -215,10 +179,7 @@ GOOS=linux GOARCH=amd64 go build -o intunewin-linux cmd/intunewin/main.go
 
 ## Reference Implementation
 
-This implementation is inspired by [simeoncloud/IntuneAppBuilder](https://github.com/simeoncloud/IntuneAppBuilder), particularly:
-- Encryption key generation methods
-- intunewin file format structure
-- Metadata structure
+This implementation is inspired by [simeoncloud/IntuneAppBuilder](https://github.com/simeoncloud/IntuneAppBuilder).
 
 ## License
 

@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/kenchan0130/intunewin/internal/crypto"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

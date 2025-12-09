@@ -94,7 +94,8 @@ func TestComputeFileDigest(t *testing.T) {
 	assert.Len(t, digest, 32, "SHA256 digest should be 32 bytes")
 
 	// Compute again to verify consistency
-	input.Seek(0, 0)
+	_, err = input.Seek(0, 0)
+	require.NoError(t, err)
 	digest2, err := ComputeFileDigest(input)
 	require.NoError(t, err)
 	assert.Equal(t, digest, digest2, "Digest should be consistent")

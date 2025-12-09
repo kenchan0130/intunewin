@@ -17,9 +17,9 @@ func TestPack(t *testing.T) {
 
 	// Create source directory with test files
 	require.NoError(t, os.MkdirAll(sourceDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "test.txt"), []byte("Hello, World!"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "test.txt"), []byte("Hello, World!"), 0600))
 	require.NoError(t, os.MkdirAll(filepath.Join(sourceDir, "subdir"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "subdir", "test2.txt"), []byte("Test file 2"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "subdir", "test2.txt"), []byte("Test file 2"), 0600))
 
 	// Pack
 	outputFile := filepath.Join(outputDir, "test.intunewin")
@@ -45,7 +45,7 @@ func TestPackNonExistentSource(t *testing.T) {
 func TestPackFileInsteadOfDirectory(t *testing.T) {
 	tempDir := t.TempDir()
 	sourceFile := filepath.Join(tempDir, "test.txt")
-	require.NoError(t, os.WriteFile(sourceFile, []byte("test"), 0644))
+	require.NoError(t, os.WriteFile(sourceFile, []byte("test"), 0600))
 
 	outputFile := filepath.Join(tempDir, "output.intunewin")
 

@@ -10,7 +10,6 @@ import (
 
 	"github.com/kenchan0130/intunewin/internal/pack"
 	"github.com/kenchan0130/intunewin/internal/unpack"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,10 +24,10 @@ func TestPackAndUnpack(t *testing.T) {
 	// Create source directory with test files
 	require.NoError(t, os.MkdirAll(sourceDir, 0755))
 	testContent := []byte("Hello, World! This is a test file.")
-	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "test.txt"), testContent, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "test.txt"), testContent, 0600))
 	require.NoError(t, os.MkdirAll(filepath.Join(sourceDir, "subdir"), 0755))
 	testContent2 := []byte("Test file in subdirectory")
-	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "subdir", "test2.txt"), testContent2, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "subdir", "test2.txt"), testContent2, 0600))
 
 	// Pack
 	err := pack.Pack(sourceDir, packedFile)

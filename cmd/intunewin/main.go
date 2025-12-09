@@ -6,7 +6,6 @@ import (
 
 	"github.com/kenchan0130/intunewin/internal/pack"
 	"github.com/kenchan0130/intunewin/internal/unpack"
-
 	"github.com/spf13/cobra"
 )
 

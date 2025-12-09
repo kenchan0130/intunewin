@@ -145,7 +145,7 @@ func Pack(sourceFolder, outputFile string) error {
 		// Get relative path
 		relPath, err := filepath.Rel(sourceFolder, path)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get relative path: %w", err)
 		}
 
 		// Skip root directory

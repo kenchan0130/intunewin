@@ -12,11 +12,11 @@ build:
 
 PHONY: format
 format:
-	@golangci-lint run --fix ./...
+	@go tool golangci-lint run --fix ./...
 
 PHONY: lint
 lint:
-	golangci-lint run -v ./...
+	go tool golangci-lint run -v ./...
 
 PHONY: test
 test:

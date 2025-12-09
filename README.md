@@ -63,8 +63,6 @@ intunewin unpack myapp.intunewin ./extracted
 
 ```bash
 intunewin --help
-intunewin pack --help
-intunewin unpack --help
 ```
 
 ### API

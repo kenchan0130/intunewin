@@ -155,7 +155,7 @@ The `.intunewin` file is a ZIP archive containing:
 ### Running Tests
 
 ```bash
-go test ./...
+make test
 ```
 
 ### Running Tests with Coverage
@@ -167,22 +167,7 @@ go test -cover ./...
 ### Building
 
 ```bash
-go build -o intunewin cmd/intunewin/main.go
-```
-
-### Cross-compilation
-
-Build for different platforms:
-
-```bash
-# Windows
-GOOS=windows GOARCH=amd64 go build -o intunewin.exe cmd/intunewin/main.go
-
-# macOS
-GOOS=darwin GOARCH=amd64 go build -o intunewin-macos cmd/intunewin/main.go
-
-# Linux
-GOOS=linux GOARCH=amd64 go build -o intunewin-linux cmd/intunewin/main.go
+make build
 ```
 
 ## Reference Implementation

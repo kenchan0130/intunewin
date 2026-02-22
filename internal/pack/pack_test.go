@@ -1,6 +1,9 @@
 package pack
 
 import (
+	"archive/zip"
+	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,6 +33,30 @@ func TestPack(t *testing.T) {
 	info, err := os.Stat(outputFile)
 	require.NoError(t, err)
 	assert.Greater(t, info.Size(), int64(0))
+}
+
+func TestPackReaderFromZip_OuterEntriesAreUncompressed(t *testing.T) {
+	zipBuf := new(bytes.Buffer)
+	zipWriter := zip.NewWriter(zipBuf)
+	w, err := zipWriter.Create("test.txt")
+	require.NoError(t, err)
+	_, err = w.Write([]byte("Hello, World!"))
+	require.NoError(t, err)
+	require.NoError(t, zipWriter.Close())
+
+	reader, err := PackReaderFromZip(bytes.NewReader(zipBuf.Bytes()), "test", "test.txt")
+	require.NoError(t, err)
+
+	packed, err := io.ReadAll(reader)
+	require.NoError(t, err)
+
+	zipReader, err := zip.NewReader(bytes.NewReader(packed), int64(len(packed)))
+	require.NoError(t, err)
+
+	for _, f := range zipReader.File {
+		assert.Equalf(t, zip.Store, f.Method,
+			"outer ZIP entry %q must use Store (no compression) for Intune compatibility", f.Name)
+	}
 }
 
 func TestPackNonExistentSource(t *testing.T) {

@@ -73,7 +73,7 @@ func PackReaderFromZip(zipReader io.Reader, name, setupFile string) (io.Reader, 
 	// Add Detection.xml at IntuneWinPackage/Metadata/Detection.xml
 	metaHeader := &zip.FileHeader{
 		Name:     "IntuneWinPackage/Metadata/Detection.xml",
-		Method:   zip.Deflate,
+		Method:   zip.Store,
 		Modified: now,
 	}
 	metaWriter, err := outputZipWriter.CreateHeader(metaHeader)
@@ -89,7 +89,7 @@ func PackReaderFromZip(zipReader io.Reader, name, setupFile string) (io.Reader, 
 	// Add encrypted contents at IntuneWinPackage/Contents/IntunePackage.intunewin
 	contentsHeader := &zip.FileHeader{
 		Name:     "IntuneWinPackage/Contents/IntunePackage.intunewin",
-		Method:   zip.Deflate,
+		Method:   zip.Store,
 		Modified: now,
 	}
 	contentsWriter, err := outputZipWriter.CreateHeader(contentsHeader)

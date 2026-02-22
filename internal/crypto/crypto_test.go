@@ -120,13 +120,14 @@ func TestPKCS7Padding(t *testing.T) {
 			assert.Equal(t, 0, len(padded)%tt.blockSize, "Padded data should be multiple of block size")
 
 			// Get padding value
-			paddingValue := int(padded[len(padded)-1])
+			padByte := padded[len(padded)-1]
+			paddingValue := int(padByte)
 			assert.Greater(t, paddingValue, 0, "Padding value should be positive")
 			assert.LessOrEqual(t, paddingValue, tt.blockSize, "Padding value should not exceed block size")
 
 			// Verify all padding bytes are the same
 			for i := len(padded) - paddingValue; i < len(padded); i++ {
-				assert.Equal(t, byte(paddingValue), padded[i], "All padding bytes should be equal")
+				assert.Equal(t, padByte, padded[i], "All padding bytes should be equal")
 			}
 
 			// Test unpadding

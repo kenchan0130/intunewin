@@ -3,4 +3,4 @@ registries:
   - type: standard
     ref: v4.444.2  # renovate: depName=aquaproj/aqua-registry
 packages:
-  - name: suzuki-shunsuke/ghalint@v1.5.3
+  - name: suzuki-shunsuke/ghalint@v1.5.5

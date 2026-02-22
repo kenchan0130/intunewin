@@ -89,9 +89,10 @@ func Encrypt(input io.Reader, output io.Writer, encryptionKey, macKey, iv []byte
 // pkcs7Pad adds PKCS7 padding to data
 func pkcs7Pad(data []byte, blockSize int) []byte {
 	padding := blockSize - (len(data) % blockSize)
+	padByte := byte(padding) //nolint:gosec // padding is in [1, blockSize] where blockSize is aes.BlockSize (16)
 	padText := make([]byte, padding)
 	for i := range padText {
-		padText[i] = byte(padding)
+		padText[i] = padByte
 	}
 	return append(data, padText...)
 }
@@ -160,14 +161,14 @@ func pkcs7Unpad(data []byte, blockSize int) ([]byte, error) {
 		return nil, fmt.Errorf("data is empty")
 	}
 
-	padding := int(data[len(data)-1])
+	padByte := data[len(data)-1]
+	padding := int(padByte)
 	if padding > blockSize || padding == 0 {
 		return nil, fmt.Errorf("invalid padding")
 	}
 
-	// Verify padding
 	for i := len(data) - padding; i < len(data); i++ {
-		if data[i] != byte(padding) {
+		if data[i] != padByte {
 			return nil, fmt.Errorf("invalid padding")
 		}
 	}

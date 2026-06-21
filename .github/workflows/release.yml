@@ -19,7 +19,7 @@ jobs:
         with:
           persist-credentials: true # tagpr require this credential
       - id: tagpr
-        uses: Songmu/tagpr@da82ed6743aec90049892070edd5561335904a9e # v1.17.0
+        uses: Songmu/tagpr@e84001bd5dac8defa0c75b3913937d284a3b3660 # v1.20.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   

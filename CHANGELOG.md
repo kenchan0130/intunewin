@@ -1,5 +1,21 @@
 # Changelog
 
+## [v0.0.6](https://github.com/kenchan0130/intunewin/compare/v0.0.5...v0.0.6) - 2026-07-22
+
+- chore(deps): update actions/checkout action to v6.0.3 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/27
+- chore(deps): update dependency suzuki-shunsuke/ghalint to v1.5.6 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/28
+- chore(deps): update actions/setup-go action to v6.5.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/29
+- chore(deps): update dependency aquaproj/aqua-renovate-config to v2.13.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/30
+- chore(deps): update dependency aquaproj/aqua to v2.60.1 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/31
+- chore(deps): update dependency aquaproj/aqua-registry to v4.532.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/32
+- chore(deps): update goreleaser/goreleaser-action action to v7.2.3 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/34
+- chore(deps): update reviewdog/action-actionlint action to v1.72.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/35
+- chore(deps): update songmu/tagpr action to v1.20.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/36
+- chore(deps): update actions/checkout action to v7 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/37
+- fix: widen Renovate schedule window to the first week of the month by @kenchan0130 in https://github.com/kenchan0130/intunewin/pull/39
+- chore(deps): update aquaproj/aqua-installer action to v4.0.5 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/40
+- chore(deps): update dependency aquaproj/aqua-registry to v4.540.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/41
+
 ## [v0.0.5](https://github.com/kenchan0130/intunewin/compare/v0.0.4...v0.0.5) - 2026-02-22
 - use renovate by @kenchan0130 in https://github.com/kenchan0130/intunewin/pull/9
 - chore(deps): update goreleaser/goreleaser-action action to v7 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/21

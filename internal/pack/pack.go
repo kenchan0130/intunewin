@@ -122,6 +122,11 @@ func Pack(sourceFolder, outputFile string) error {
 	if !info.IsDir() {
 		return fmt.Errorf("source path is not a directory: %s", sourceFolder)
 	}
+	sourceRoot, err := os.OpenRoot(sourceFolder)
+	if err != nil {
+		return fmt.Errorf("failed to open source folder: %w", err)
+	}
+	defer sourceRoot.Close()
 
 	// Create output directory if it doesn't exist
 	outputDir := filepath.Dir(outputFile)
@@ -153,9 +158,6 @@ func Pack(sourceFolder, outputFile string) error {
 			return nil
 		}
 
-		// Convert to slash path for zip
-		relPath = filepath.ToSlash(relPath)
-
 		if fileInfo.IsDir() {
 			// Add directory entry
 			files = append(files, struct {
@@ -165,14 +167,14 @@ func Pack(sourceFolder, outputFile string) error {
 				IsDir    bool
 				Modified time.Time
 			}{
-				Path:     relPath,
+				Path:     filepath.ToSlash(relPath),
 				Mode:     fileInfo.Mode(),
 				IsDir:    true,
 				Modified: fileInfo.ModTime(),
 			})
 		} else {
 			// Read file content
-			content, err := os.ReadFile(path)
+			content, err := sourceRoot.ReadFile(relPath)
 			if err != nil {
 				return fmt.Errorf("failed to read file %s: %w", path, err)
 			}
@@ -184,7 +186,7 @@ func Pack(sourceFolder, outputFile string) error {
 				IsDir    bool
 				Modified time.Time
 			}{
-				Path:     relPath,
+				Path:     filepath.ToSlash(relPath),
 				Content:  bytes.NewReader(content),
 				Mode:     fileInfo.Mode(),
 				IsDir:    false,

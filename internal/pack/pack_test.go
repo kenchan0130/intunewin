@@ -35,6 +35,21 @@ func TestPack(t *testing.T) {
 	assert.Greater(t, info.Size(), int64(0))
 }
 
+func TestPackRejectsSymlinkOutsideSource(t *testing.T) {
+	tempDir := t.TempDir()
+	sourceDir := filepath.Join(tempDir, "source")
+	require.NoError(t, os.Mkdir(sourceDir, 0755))
+	outsideFile := filepath.Join(tempDir, "outside.txt")
+	require.NoError(t, os.WriteFile(outsideFile, []byte("outside"), 0600))
+	if err := os.Symlink(outsideFile, filepath.Join(sourceDir, "link.txt")); err != nil {
+		t.Skipf("cannot create symlink: %v", err)
+	}
+
+	err := Pack(sourceDir, filepath.Join(tempDir, "output.intunewin"))
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "failed to read file")
+}
+
 func TestPackReaderFromZip_OuterEntriesAreUncompressed(t *testing.T) {
 	zipBuf := new(bytes.Buffer)
 	zipWriter := zip.NewWriter(zipBuf)

@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.8](https://github.com/kenchan0130/intunewin/compare/v0.0.7...v0.0.8) - 2026-10-14
+
+- chore(deps): update songmu/tagpr action to v1.21.2 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/49
+- chore(deps): update dependency aquaproj/aqua-registry to v4.574.1 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/50
+- chore(deps): update reviewdog/action-actionlint action to v1.80.1 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/52
+- chore(deps): update aquaproj/aqua-installer action to v4.1.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/53
+- chore(deps): update dependency aquaproj/aqua to v2.64.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/55
+- chore(deps): update dependency aqua to v2.64.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/54
+
 ## [v0.0.7](https://github.com/kenchan0130/intunewin/compare/v0.0.6...v0.0.7) - 2026-09-23
 
 - chore(deps): update actions/checkout action to v7.0.1 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/42

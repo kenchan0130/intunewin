@@ -2,7 +2,7 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended",
-    "github>aquaproj/aqua-renovate-config#2.13.0"
+    "github>aquaproj/aqua-renovate-config#2.14.0"
   ],
   // Whole first week of the month: Mend Community jobs only run every few
   // days at arbitrary times, so a narrow window like "before 9am on the

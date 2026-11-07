@@ -94,15 +94,21 @@ func TestVerifyMacTruncated(t *testing.T) {
 }
 
 func TestDecryptErrors(t *testing.T) {
-	keys := newKeys(t)
+	// Fixed values keep the wrong-key case deterministic: with random keys the garbage
+	// final block would look like valid padding about once in 256 runs.
+	keys := Keys{
+		EncryptionKey:        bytes.Repeat([]byte{0x11}, KeySize),
+		MacKey:               bytes.Repeat([]byte{0x22}, KeySize),
+		InitializationVector: bytes.Repeat([]byte{0x33}, IVSize),
+	}
+	wrongKey := bytes.Repeat([]byte{0x44}, KeySize)
 	encrypted, _ := encrypt(t, keys, []byte("Hello, World!"))
 
 	var out bytes.Buffer
 	assert.ErrorContains(t, Decrypt(&out, bytes.NewReader(encrypted[:HeaderSize]), keys.EncryptionKey), "empty")
 	assert.ErrorContains(t, Decrypt(&out, bytes.NewReader(encrypted[:len(encrypted)-1]), keys.EncryptionKey), "multiple of the block size")
 	assert.ErrorContains(t, Decrypt(&out, bytes.NewReader(encrypted[:5]), keys.EncryptionKey), "header")
-	// A wrong key yields garbage whose padding is (almost certainly) invalid.
-	assert.ErrorContains(t, Decrypt(&out, bytes.NewReader(encrypted), newKeys(t).EncryptionKey), "padding")
+	assert.ErrorContains(t, Decrypt(&out, bytes.NewReader(encrypted), wrongKey), "padding")
 	assert.ErrorContains(t, Decrypt(&out, bytes.NewReader(encrypted), keys.EncryptionKey[:16]), "must be 32 bytes")
 }
 

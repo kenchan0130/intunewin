@@ -38,7 +38,8 @@ func TestMarshalStructure(t *testing.T) {
 	assert.NotContains(t, s, "<?xml")
 	assert.NotContains(t, s, "<Description>", "empty Description must be omitted")
 
-	// Element order matters for some consumers; keep it identical to IntuneWinAppUtil.
+	// Element order matters for some consumers; keep it identical to the reference
+	// implementation (simeoncloud/IntuneAppBuilder).
 	order := []string{
 		"<Name>setup.exe</Name>",
 		"<UnencryptedContentSize>1234</UnencryptedContentSize>",

@@ -1,24 +1,24 @@
-PHONY: tidy
+.PHONY: tidy
 tidy:
 	@go mod tidy -v
 
-PHONY: install
+.PHONY: install
 install:
 	@go mod download
 
-PHONY: build
+.PHONY: build
 build:
 	@go build -o bin/intunewin ./cmd/intunewin
 
-PHONY: format
+.PHONY: format
 format:
 	@go tool golangci-lint run --fix ./...
 
-PHONY: lint
+.PHONY: lint
 lint:
 	go tool golangci-lint run -v ./...
 
-PHONY: test
+.PHONY: test
 test:
 	go test -race -v -shuffle on ./...
 

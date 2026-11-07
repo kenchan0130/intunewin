@@ -1,266 +1,427 @@
+// Package pack creates .intunewin packages.
 package pack
 
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/kenchan0130/intunewin/internal/crypto"
 	"github.com/kenchan0130/intunewin/internal/metadata"
 )
 
-// PackReaderFromZip creates an intunewin package from a zip stream.
-// zipReader should contain a zip archive.
-// name is the application name for metadata.
-// setupFile is the setup file name within the content file.
-// Returns an io.Reader containing the intunewin package.
-func PackReaderFromZip(zipReader io.Reader, name, setupFile string) (io.Reader, error) {
-	// Read all zip data
-	sourceData, err := io.ReadAll(zipReader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read zip data: %w", err)
-	}
-	unencryptedSize := int64(len(sourceData))
-
-	// Compute file digest before encryption
-	fileDigest, err := crypto.ComputeFileDigest(bytes.NewReader(sourceData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to compute file digest: %w", err)
-	}
-
-	// Generate encryption keys
-	encKey, macKey, iv, err := crypto.GenerateKeys()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate encryption keys: %w", err)
-	}
-
-	// Encrypt data
-	encryptedBuf := new(bytes.Buffer)
-	mac, err := crypto.Encrypt(bytes.NewReader(sourceData), encryptedBuf, encKey, macKey, iv)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt data: %w", err)
-	}
-
-	// Create encryption info
-	encInfo := &crypto.EncryptionInfo{
-		EncryptionKey:        encKey,
-		MacKey:               macKey,
-		InitializationVector: iv,
-		Mac:                  mac,
-		FileDigest:           fileDigest,
-		ProfileIdentifier:    "ProfileVersion1",
-		FileDigestAlgorithm:  "SHA256",
-	}
-
-	// Create ApplicationInfo with XML metadata
-	appInfo := metadata.NewApplicationInfo(name, setupFile, unencryptedSize, encInfo)
-	metaXML, err := appInfo.ToXML()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create metadata XML: %w", err)
-	}
-
-	// Create final intunewin package (zip archive with proper structure)
-	outputBuf := new(bytes.Buffer)
-	outputZipWriter := zip.NewWriter(outputBuf)
-
-	// Use current time for all files
-	now := time.Now()
-
-	// Add Detection.xml at IntuneWinPackage/Metadata/Detection.xml
-	metaHeader := &zip.FileHeader{
-		Name:     "IntuneWinPackage/Metadata/Detection.xml",
-		Method:   zip.Store,
-		Modified: now,
-	}
-	metaWriter, err := outputZipWriter.CreateHeader(metaHeader)
-	if err != nil {
-		outputZipWriter.Close()
-		return nil, fmt.Errorf("failed to create metadata entry: %w", err)
-	}
-	if _, err := metaWriter.Write(metaXML); err != nil {
-		outputZipWriter.Close()
-		return nil, fmt.Errorf("failed to write metadata: %w", err)
-	}
-
-	// Add encrypted contents at IntuneWinPackage/Contents/IntunePackage.intunewin
-	contentsHeader := &zip.FileHeader{
-		Name:     "IntuneWinPackage/Contents/IntunePackage.intunewin",
-		Method:   zip.Store,
-		Modified: now,
-	}
-	contentsWriter, err := outputZipWriter.CreateHeader(contentsHeader)
-	if err != nil {
-		outputZipWriter.Close()
-		return nil, fmt.Errorf("failed to create contents entry: %w", err)
-	}
-	if _, err := contentsWriter.Write(encryptedBuf.Bytes()); err != nil {
-		outputZipWriter.Close()
-		return nil, fmt.Errorf("failed to write contents: %w", err)
-	}
-
-	if err := outputZipWriter.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close zip writer: %w", err)
-	}
-
-	return bytes.NewReader(outputBuf.Bytes()), nil
+// Options configures the Detection.xml written into a package.
+type Options struct {
+	// Name is written to the <Name> element. Defaults to the base name of SetupFile.
+	Name string
+	// SetupFile is the path of the setup file relative to the package content root.
+	// Only its file name is written to the <SetupFile> element.
+	SetupFile string
 }
 
-// Pack creates an intunewin file from a source folder
-func Pack(sourceFolder, outputFile string) error {
-	// Check if source folder exists
-	info, err := os.Stat(sourceFolder)
+// DirOptions configures Dir.
+type DirOptions struct {
+	Options
+	// Exclude lists glob patterns (path.Match syntax) of files and directories to leave out.
+	// A pattern matches when it matches either the slash-separated path relative to the
+	// source folder or the base name.
+	Exclude []string
+	// Overwrite allows replacing an existing output file.
+	Overwrite bool
+}
+
+// Write builds an .intunewin package from content, a zip archive of the files to
+// package, and writes it to dst. Content is streamed; memory use does not depend on
+// the content size. A temporary file of roughly the content size is created in os.TempDir.
+func Write(dst io.Writer, content io.Reader, opts Options) error {
+	if opts.SetupFile == "" {
+		return errors.New("setup file is required")
+	}
+	return write(dst, "", opts, func(w io.Writer) error {
+		if _, err := io.Copy(w, content); err != nil {
+			return fmt.Errorf("failed to read content: %w", err)
+		}
+		return nil
+	})
+}
+
+// Dir packages the contents of sourceDir into the .intunewin file outputFile.
+//
+// If opts.SetupFile is empty, the first .msi file, or else the first .exe file, at the
+// top level of sourceDir is used. The output is written atomically.
+func Dir(sourceDir, outputFile string, opts DirOptions) error {
+	info, err := os.Stat(sourceDir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("source folder does not exist: %s", sourceFolder)
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("source folder does not exist: %s", sourceDir)
 		}
 		return fmt.Errorf("failed to access source folder: %w", err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("source path is not a directory: %s", sourceFolder)
+		return fmt.Errorf("source path is not a directory: %s", sourceDir)
 	}
-	sourceRoot, err := os.OpenRoot(sourceFolder)
+	for _, p := range opts.Exclude {
+		if _, err := path.Match(p, ""); err != nil {
+			return fmt.Errorf("invalid exclude pattern %q: %w", p, err)
+		}
+	}
+	if !opts.Overwrite {
+		if _, err := os.Lstat(outputFile); err == nil {
+			return fmt.Errorf("output file already exists: %s (use --force to overwrite)", outputFile)
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("failed to access output file: %w", err)
+		}
+	}
+
+	root, err := os.OpenRoot(sourceDir)
 	if err != nil {
 		return fmt.Errorf("failed to open source folder: %w", err)
 	}
-	defer sourceRoot.Close()
+	defer root.Close()
 
-	// Create output directory if it doesn't exist
+	setupFile, err := resolveSetupFile(root, opts.SetupFile)
+	if err != nil {
+		return err
+	}
+	opts.SetupFile = setupFile
+
+	entries, err := collect(root, opts.Exclude, outputPathInSource(sourceDir, outputFile))
+	if err != nil {
+		return err
+	}
+	if !containsFile(entries, setupFile) {
+		return fmt.Errorf("setup file %s is excluded from the package", setupFile)
+	}
+
 	outputDir := filepath.Dir(outputFile)
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
-
-	// Collect files from folder into FileEntry slice
-	var files []struct {
-		Path     string
-		Content  io.Reader
-		Mode     os.FileMode
-		IsDir    bool
-		Modified time.Time
-	}
-	err = filepath.Walk(sourceFolder, func(path string, fileInfo os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Get relative path
-		relPath, err := filepath.Rel(sourceFolder, path)
-		if err != nil {
-			return fmt.Errorf("failed to get relative path: %w", err)
-		}
-
-		// Skip root directory
-		if relPath == "." {
-			return nil
-		}
-
-		if fileInfo.IsDir() {
-			// Add directory entry
-			files = append(files, struct {
-				Path     string
-				Content  io.Reader
-				Mode     os.FileMode
-				IsDir    bool
-				Modified time.Time
-			}{
-				Path:     filepath.ToSlash(relPath),
-				Mode:     fileInfo.Mode(),
-				IsDir:    true,
-				Modified: fileInfo.ModTime(),
-			})
-		} else {
-			// Read file content
-			content, err := sourceRoot.ReadFile(relPath)
-			if err != nil {
-				return fmt.Errorf("failed to read file %s: %w", path, err)
-			}
-
-			files = append(files, struct {
-				Path     string
-				Content  io.Reader
-				Mode     os.FileMode
-				IsDir    bool
-				Modified time.Time
-			}{
-				Path:     filepath.ToSlash(relPath),
-				Content:  bytes.NewReader(content),
-				Mode:     fileInfo.Mode(),
-				IsDir:    false,
-				Modified: fileInfo.ModTime(),
-			})
-		}
-
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to walk source folder: %w", err)
-	}
-
-	// Create zip from files
-	zipBuf := new(bytes.Buffer)
-	zipWriter := zip.NewWriter(zipBuf)
-
-	for _, file := range files {
-		if file.IsDir {
-			header := &zip.FileHeader{
-				Name:     file.Path + "/",
-				Modified: file.Modified,
-			}
-			header.SetMode(file.Mode)
-			_, err := zipWriter.CreateHeader(header)
-			if err != nil {
-				zipWriter.Close()
-				return fmt.Errorf("failed to create directory entry %s: %w", file.Path, err)
-			}
-		} else {
-			header := &zip.FileHeader{
-				Name:     file.Path,
-				Method:   zip.Deflate,
-				Modified: file.Modified,
-			}
-			header.SetMode(file.Mode)
-
-			writer, err := zipWriter.CreateHeader(header)
-			if err != nil {
-				zipWriter.Close()
-				return fmt.Errorf("failed to create file entry %s: %w", file.Path, err)
-			}
-
-			if _, err := io.Copy(writer, file.Content); err != nil {
-				zipWriter.Close()
-				return fmt.Errorf("failed to write file content %s: %w", file.Path, err)
-			}
-		}
-	}
-
-	if err := zipWriter.Close(); err != nil {
-		return fmt.Errorf("failed to close zip writer: %w", err)
-	}
-
-	// Determine name and setup file from source folder
-	name := filepath.Base(sourceFolder)
-	setupFile := name // Default to folder name, can be customized
-
-	// Use PackReaderFromZip to create intunewin package
-	intunewinReader, err := PackReaderFromZip(bytes.NewReader(zipBuf.Bytes()), name, setupFile)
-	if err != nil {
-		return fmt.Errorf("failed to create intunewin package: %w", err)
-	}
-
-	// Write to output file
-	outFile, err := os.Create(outputFile)
+	tmp, err := createOutputTemp(outputDir, filepath.Base(outputFile))
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tmp.Close()
+			_ = os.Remove(tmp.Name())
+		}
+	}()
 
-	if _, err := io.Copy(outFile, intunewinReader); err != nil {
+	if err := write(tmp, outputDir, opts.Options, func(w io.Writer) error { return writeZip(w, root, entries) }); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("failed to write output file: %w", err)
 	}
+	if err := os.Rename(tmp.Name(), outputFile); err != nil {
+		return fmt.Errorf("failed to write output file: %w", err)
+	}
+	committed = true
+	return nil
+}
 
+// createOutputTemp creates a uniquely named file in dir. Unlike os.CreateTemp, the file
+// is created with mode 0666 before umask, so the final output gets the same permissions
+// as a file created with os.Create.
+func createOutputTemp(dir, base string) (*os.File, error) {
+	for range 100 {
+		var suffix [8]byte
+		if _, err := rand.Read(suffix[:]); err != nil {
+			return nil, fmt.Errorf("failed to generate temporary name: %w", err)
+		}
+		name := filepath.Join(dir, "."+base+"."+hex.EncodeToString(suffix[:])+".tmp")
+		f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		return f, err //nolint:wrapcheck // wrapped by the caller
+	}
+	return nil, errors.New("failed to find an unused temporary file name")
+}
+
+func write(dst io.Writer, tempDir string, opts Options, writeContent func(io.Writer) error) error {
+	// Like the reference implementation, only the file name is recorded, even when the
+	// setup file is in a subfolder.
+	setupFile := path.Base(filepath.ToSlash(opts.SetupFile))
+	name := opts.Name
+	if name == "" {
+		name = path.Base(setupFile)
+	}
+
+	keys, err := crypto.GenerateKeys()
+	if err != nil {
+		return fmt.Errorf("failed to generate encryption keys: %w", err)
+	}
+
+	tmp, err := os.CreateTemp(tempDir, ".intunewin-*.enc")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary file: %w", err)
+	}
+	defer func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+	}()
+
+	enc, err := crypto.NewEncryptor(tmp, keys)
+	if err != nil {
+		return fmt.Errorf("failed to initialize encryption: %w", err)
+	}
+	digest := sha256.New()
+	var size countWriter
+	if err := writeContent(io.MultiWriter(enc, digest, &size)); err != nil {
+		return err
+	}
+	if err := enc.Close(); err != nil {
+		return fmt.Errorf("failed to encrypt content: %w", err)
+	}
+
+	detection, err := metadata.Marshal(&metadata.Info{
+		ToolVersion:            metadata.ToolVersion,
+		Name:                   name,
+		UnencryptedContentSize: size.n,
+		FileName:               metadata.ContentFileName,
+		SetupFile:              setupFile,
+		EncryptionInfo: metadata.EncryptionInfo{
+			EncryptionKey:        keys.EncryptionKey,
+			MacKey:               keys.MacKey,
+			InitializationVector: keys.InitializationVector,
+			Mac:                  enc.Mac(),
+			ProfileIdentifier:    metadata.ProfileIdentifier,
+			FileDigest:           digest.Sum(nil),
+			FileDigestAlgorithm:  metadata.FileDigestAlgorithm,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create Detection.xml: %w", err)
+	}
+	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("failed to rewind temporary file: %w", err)
+	}
+
+	// The outer zip entries are stored uncompressed, as IntuneWinAppUtil does.
+	zw := zip.NewWriter(dst)
+	now := time.Now()
+	if err := addStored(zw, metadata.DetectionPath, bytes.NewReader(detection), now); err != nil {
+		return err
+	}
+	if err := addStored(zw, metadata.ContentPath, tmp, now); err != nil {
+		return err
+	}
+	if err := zw.Close(); err != nil {
+		return fmt.Errorf("failed to finish package: %w", err)
+	}
+	return nil
+}
+
+func addStored(zw *zip.Writer, name string, r io.Reader, modified time.Time) error {
+	w, err := zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Store, Modified: modified})
+	if err != nil {
+		return fmt.Errorf("failed to create %s: %w", name, err)
+	}
+	if _, err := io.Copy(w, r); err != nil {
+		return fmt.Errorf("failed to write %s: %w", name, err)
+	}
+	return nil
+}
+
+type countWriter struct{ n int64 }
+
+func (c *countWriter) Write(p []byte) (int, error) {
+	c.n += int64(len(p))
+	return len(p), nil
+}
+
+// resolveSetupFile validates the given setup file, or picks one when spec is empty.
+// The result is a slash-separated path relative to root.
+func resolveSetupFile(root *os.Root, spec string) (string, error) {
+	if spec != "" {
+		p := filepath.Clean(spec)
+		if !filepath.IsLocal(p) {
+			return "", fmt.Errorf("setup file must be a relative path inside the source folder: %s", spec)
+		}
+		info, err := root.Stat(p)
+		if err != nil {
+			return "", fmt.Errorf("setup file not found in source folder: %s: %w", spec, err)
+		}
+		if !info.Mode().IsRegular() {
+			return "", fmt.Errorf("setup file is not a regular file: %s", spec)
+		}
+		return filepath.ToSlash(p), nil
+	}
+
+	dirEntries, err := fs.ReadDir(root.FS(), ".")
+	if err != nil {
+		return "", fmt.Errorf("failed to read source folder: %w", err)
+	}
+	for _, ext := range []string{".msi", ".exe"} {
+		for _, e := range dirEntries {
+			if !strings.EqualFold(path.Ext(e.Name()), ext) {
+				continue
+			}
+			if info, err := root.Stat(e.Name()); err == nil && info.Mode().IsRegular() {
+				return e.Name(), nil
+			}
+		}
+	}
+	return "", errors.New("no .msi or .exe file found at the top level of the source folder; specify the setup file explicitly")
+}
+
+// outputPathInSource returns the slash-separated path of outputFile relative to
+// sourceDir if it lies inside it, or "" otherwise.
+func outputPathInSource(sourceDir, outputFile string) string {
+	src, err := filepath.EvalSymlinks(sourceDir)
+	if err != nil {
+		return ""
+	}
+	src, err = filepath.Abs(src)
+	if err != nil {
+		return ""
+	}
+	outDir := filepath.Dir(outputFile)
+	if resolved, err := filepath.EvalSymlinks(outDir); err == nil {
+		outDir = resolved
+	}
+	out, err := filepath.Abs(filepath.Join(outDir, filepath.Base(outputFile)))
+	if err != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(src, out)
+	if err != nil || !filepath.IsLocal(rel) {
+		return ""
+	}
+	return filepath.ToSlash(rel)
+}
+
+type entry struct {
+	name     string // slash-separated, relative to the source root
+	dir      bool
+	perm     fs.FileMode
+	modified time.Time
+}
+
+func containsFile(entries []entry, name string) bool {
+	for _, e := range entries {
+		if !e.dir && e.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func excluded(name string, patterns []string) bool {
+	base := path.Base(name)
+	for _, p := range patterns {
+		if ok, _ := path.Match(p, name); ok {
+			return true
+		}
+		if ok, _ := path.Match(p, base); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// collect lists the entries to package. Symbolic links to files inside the source
+// folder are stored as regular files; anything else that is not a regular file or
+// directory is rejected.
+func collect(root *os.Root, exclude []string, skip string) ([]entry, error) {
+	fsys := root.FS()
+	var entries []entry
+	files := 0
+	err := fs.WalkDir(fsys, ".", func(name string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if name == "." {
+			return nil
+		}
+		if name == skip || excluded(name, exclude) {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+
+		isLink := d.Type()&fs.ModeSymlink != 0
+		info, err := fs.Stat(fsys, name)
+		if err != nil {
+			if isLink {
+				return fmt.Errorf("symbolic link %s is broken or points outside the source folder: %w", name, err)
+			}
+			return fmt.Errorf("failed to stat %s: %w", name, err)
+		}
+		switch {
+		case info.IsDir():
+			if isLink {
+				return fmt.Errorf("symbolic links to directories are not supported: %s", name)
+			}
+			entries = append(entries, entry{name: name, dir: true, perm: info.Mode().Perm(), modified: info.ModTime()})
+		case info.Mode().IsRegular():
+			files++
+			entries = append(entries, entry{name: name, perm: info.Mode().Perm(), modified: info.ModTime()})
+		default:
+			return fmt.Errorf("unsupported file type %s: %s", info.Mode().Type(), name)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to walk source folder: %w", err)
+	}
+	if files == 0 {
+		return nil, errors.New("source folder contains no files")
+	}
+	return entries, nil
+}
+
+func writeZip(w io.Writer, root *os.Root, entries []entry) error {
+	zw := zip.NewWriter(w)
+	for _, e := range entries {
+		h := &zip.FileHeader{Name: e.name, Modified: e.modified}
+		if e.dir {
+			h.Name += "/"
+			h.SetMode(fs.ModeDir | e.perm)
+			if _, err := zw.CreateHeader(h); err != nil {
+				return fmt.Errorf("failed to add directory %s: %w", e.name, err)
+			}
+			continue
+		}
+		h.Method = zip.Deflate
+		h.SetMode(e.perm)
+		fw, err := zw.CreateHeader(h)
+		if err != nil {
+			return fmt.Errorf("failed to add file %s: %w", e.name, err)
+		}
+		if err := copyFile(fw, root, e.name); err != nil {
+			return err
+		}
+	}
+	if err := zw.Close(); err != nil {
+		return fmt.Errorf("failed to finish content archive: %w", err)
+	}
+	return nil
+}
+
+func copyFile(w io.Writer, root *os.Root, name string) error {
+	f, err := root.Open(filepath.FromSlash(name))
+	if err != nil {
+		return fmt.Errorf("failed to open %s: %w", name, err)
+	}
+	defer f.Close()
+	if _, err := io.Copy(w, f); err != nil {
+		return fmt.Errorf("failed to read %s: %w", name, err)
+	}
 	return nil
 }

@@ -1,5 +1,32 @@
 # Changelog
 
+## [v0.1.0](https://github.com/kenchan0130/intunewin/compare/v0.0.7...v0.1.0) - 2026-11-07
+
+- chore(deps): update songmu/tagpr action to v1.21.2 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/49
+- chore(deps): update dependency aquaproj/aqua-registry to v4.574.1 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/50
+- chore(deps): update reviewdog/action-actionlint action to v1.80.1 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/52
+- chore(deps): update aquaproj/aqua-installer action to v4.1.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/53
+- chore(deps): update dependency aquaproj/aqua to v2.64.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/55
+- chore(deps): update dependency aqua to v2.64.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/54
+- chore(deps): update aquaproj/aqua-installer action to v4.1.1 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/57
+- chore(deps): update songmu/tagpr action to v1.21.4 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/58
+- chore(deps): update dependency aqua to v2.65.2 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/59
+- chore(deps): update dependency aquaproj/aqua-registry to v4.581.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/61
+- chore(deps): update dependency suzuki-shunsuke/ghalint to v1.6.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/63
+- chore(deps): update reviewdog/action-actionlint action to v1.81.1 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/65
+- chore(deps): update goreleaser/goreleaser-action action to v7.3.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/64
+- chore(deps): update dependency aquaproj/aqua to v2.66.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/60
+- chore(deps): update dependency aquaproj/aqua-renovate-config to v2.14.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/62
+- chore(deps): update dependency aqua to v2.66.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/66
+- chore(deps): update dependency aquaproj/aqua-registry to v4.581.1 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/67
+- chore(deps): update songmu/tagpr action to v1.22.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/68
+- chore(deps): update dependency aqua to v2.66.1 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/69
+- chore(deps): update dependency aquaproj/aqua-registry to v4.583.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/72
+- ci: pass GITHUB_TOKEN to ghalint step by @kenchan0130 in https://github.com/kenchan0130/intunewin/pull/73
+- chore(deps): update reviewdog/action-actionlint action to v1.81.2 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/71
+- chore(deps): update module github.com/golangci/golangci-lint/v2 to v2.15.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/51
+- fix: rework pack/unpack for correctness, safety, and streaming by @kenchan0130 in https://github.com/kenchan0130/intunewin/pull/74
+
 ## [v0.0.7](https://github.com/kenchan0130/intunewin/compare/v0.0.6...v0.0.7) - 2026-09-23
 
 - chore(deps): update actions/checkout action to v7.0.1 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/42

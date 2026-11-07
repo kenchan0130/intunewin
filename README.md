@@ -45,9 +45,9 @@ intunewin pack <source-folder> <output-file.intunewin> [flags]
 
 | Flag | Description |
 | --- | --- |
-| `-s`, `--setup-file` | Setup file, relative to the source folder. Defaults to the first `.msi`, or else `.exe`, file at the top level of the source folder. Only the file name is written to `Detection.xml`. |
+| `-s`, `--setup-file` | Setup file, relative to the source folder. Defaults to the first `.msi`, or else `.exe`, file at the top level of the source folder that is not excluded. Only the file name is written to `Detection.xml`. |
 | `-n`, `--name` | Application name written to `Detection.xml`. Defaults to the setup file name. |
-| `-e`, `--exclude` | Glob pattern of files or directories to exclude, matched against the relative path and the base name. Repeatable. |
+| `-e`, `--exclude` | Glob pattern of files or directories to exclude, matched against the relative path and the base name. A trailing `/` matches directories only (e.g. `build/`). Repeatable. |
 | `-f`, `--force` | Overwrite the output file if it already exists. |
 | `-q`, `--quiet` | Suppress progress messages (printed to stderr). |
 
@@ -62,7 +62,7 @@ Notes:
 
 - Symbolic links to files inside the source folder are stored as regular files. Links that point outside the source folder, and links to directories, are rejected.
 - If the output file is inside the source folder, it is not included in the package.
-- The output file is written atomically; a failed run never leaves a partial file.
+- The output file is written atomically: it is renamed into place only after it is complete, so an existing output file is never left half-written. If the process is killed, a hidden temporary file (`.<output>.*.tmp`, `.intunewin-*.enc`) may be left next to the output.
 - Temporary files about as large as the content are created next to the output (not in the system temp directory).
 
 #### Unpack a file

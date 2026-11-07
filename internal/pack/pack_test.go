@@ -146,6 +146,31 @@ func TestDir_SetupFileAutoDetection(t *testing.T) {
 	}
 }
 
+func TestDir_SetupFileAutoDetectionSkipsExcludedFiles(t *testing.T) {
+	src := newSource(t, map[string]string{"a.msi": "", "b.exe": ""})
+	p := packDir(t, src, pack.DirOptions{Exclude: []string{"*.msi"}})
+	assert.Equal(t, "b.exe", p.info.SetupFile)
+	assert.Equal(t, []string{"b.exe"}, names(p.content))
+}
+
+func TestDir_SetupFileAutoDetectionSkipsOutputFile(t *testing.T) {
+	// A previous output with a setup-like extension in the source folder is not a candidate.
+	src := newSource(t, map[string]string{"a.exe": "old output", "z.exe": ""})
+	out := filepath.Join(src, "a.exe")
+	require.NoError(t, pack.Dir(src, out, pack.DirOptions{Overwrite: true}))
+	assert.Equal(t, "z.exe", inspect(t, out).info.SetupFile)
+}
+
+func TestDir_SetupFileSpelledWithDifferentCase(t *testing.T) {
+	src := newSource(t, map[string]string{"Sub/Setup.exe": ""})
+	if _, err := os.Stat(filepath.Join(src, "SUB", "SETUP.EXE")); err != nil {
+		t.Skip("file system is case-sensitive")
+	}
+	p := packDir(t, src, pack.DirOptions{Options: pack.Options{SetupFile: filepath.FromSlash("SUB/SETUP.EXE")}})
+	assert.Equal(t, "Setup.exe", p.info.SetupFile, "the name is recorded as spelled in the source folder")
+	assert.Equal(t, []string{"Sub/", "Sub/Setup.exe"}, names(p.content))
+}
+
 func TestDir_ExplicitSetupFileAndName(t *testing.T) {
 	src := newSource(t, map[string]string{"setup.exe": "", "scripts/install.cmd": ""})
 
@@ -248,6 +273,12 @@ func TestDir_Exclude(t *testing.T) {
 	assert.Equal(t, []string{"setup.exe", "sub/", "sub/keep.txt"}, names(p.content))
 }
 
+func TestDir_ExcludeWithTrailingSlashMatchesDirectoriesOnly(t *testing.T) {
+	src := newSource(t, map[string]string{"setup.exe": "", "build/a.txt": "", "sub/build": "", "sub/cache/b.txt": ""})
+	p := packDir(t, src, pack.DirOptions{Exclude: []string{"build/", "sub/cache/"}})
+	assert.Equal(t, []string{"setup.exe", "sub/", "sub/build"}, names(p.content))
+}
+
 func TestDir_ExcludeErrors(t *testing.T) {
 	src := newSource(t, map[string]string{"setup.exe": ""})
 	out := filepath.Join(t.TempDir(), "o.intunewin")
@@ -268,7 +299,12 @@ func TestDir_OutputInsideSourceIsNotPacked(t *testing.T) {
 	// Re-packing must not include the previous output.
 	require.NoError(t, pack.Dir(src, out, pack.DirOptions{Overwrite: true}))
 	p := inspect(t, out)
-	assert.Equal(t, []string{"dist/", "setup.exe"}, names(p.content))
+	assert.Equal(t, []string{"setup.exe"}, names(p.content), "the folder holding only the output is left out")
+
+	// Other files next to the output are still packed.
+	testutil.WriteFiles(t, src, map[string]string{"dist/notes.txt": ""})
+	require.NoError(t, pack.Dir(src, out, pack.DirOptions{Overwrite: true}))
+	assert.Equal(t, []string{"dist/", "dist/notes.txt", "setup.exe"}, names(inspect(t, out).content))
 }
 
 func TestDir_RefusesToOverwriteUnlessAllowed(t *testing.T) {

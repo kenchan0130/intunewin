@@ -3,7 +3,9 @@ package crypto
 import (
 	"bytes"
 	"crypto/aes"
+	"encoding/hex"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -179,4 +181,33 @@ func TestEncryptorWriteReportsBytesWrittenOnError(t *testing.T) {
 	assert.Equal(t, chunkSize, n, "bytes consumed before the failing flush")
 	_, err = enc.Write([]byte{1})
 	require.ErrorIs(t, err, os.ErrClosed, "the encryptor stays failed")
+}
+
+// TestKnownAnswer pins the output format against values computed independently with
+// OpenSSL, so that a mistake shared by Encryptor and Decrypt cannot go unnoticed:
+//
+//	openssl enc -aes-256-cbc -K 1111...11 -iv 3333...33 -in plaintext
+//	openssl dgst -sha256 -mac HMAC -macopt hexkey:2222...22   (over IV || ciphertext)
+func TestKnownAnswer(t *testing.T) {
+	keys := Keys{
+		EncryptionKey:        bytes.Repeat([]byte{0x11}, KeySize),
+		MacKey:               bytes.Repeat([]byte{0x22}, KeySize),
+		InitializationVector: bytes.Repeat([]byte{0x33}, IVSize),
+	}
+	plaintext := []byte("The quick brown fox jumps over the lazy dog")
+	wantMac, _ := hex.DecodeString("16aba7984d9d0aa786bdf9c668964c3c2717811ea7a807016eb68fb058399ae9")
+	wantCiphertext, _ := hex.DecodeString("4184a2538615ad6e67d32074b5ae3380396ef5ecd9b8db9fe47dadeb55deaf1d1807e2f77b7401235caecb6ee4fd4e57")
+	want := slices.Concat(wantMac, keys.InitializationVector, wantCiphertext)
+
+	encrypted, mac := encrypt(t, keys, plaintext)
+	assert.Equal(t, hex.EncodeToString(want), hex.EncodeToString(encrypted))
+	assert.Equal(t, wantMac, mac)
+
+	gotMac, err := VerifyMac(bytes.NewReader(want), keys.MacKey)
+	require.NoError(t, err)
+	assert.Equal(t, wantMac, gotMac)
+
+	var out bytes.Buffer
+	require.NoError(t, Decrypt(&out, bytes.NewReader(want), keys.EncryptionKey))
+	assert.Equal(t, plaintext, out.Bytes())
 }

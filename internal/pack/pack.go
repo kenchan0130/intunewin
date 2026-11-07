@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -35,7 +36,7 @@ type DirOptions struct {
 	Options
 	// Exclude lists glob patterns (path.Match syntax) of files and directories to leave out.
 	// A pattern matches when it matches either the slash-separated path relative to the
-	// source folder or the base name.
+	// source folder or the base name. A pattern ending in a slash matches directories only.
 	Exclude []string
 	// Overwrite allows replacing an existing output file.
 	Overwrite bool
@@ -72,7 +73,7 @@ func Dir(sourceDir, outputFile string, opts DirOptions) error {
 		return fmt.Errorf("source path is not a directory: %s", sourceDir)
 	}
 	for _, p := range opts.Exclude {
-		if _, err := path.Match(p, ""); err != nil {
+		if _, err := path.Match(strings.TrimSuffix(p, "/"), ""); err != nil {
 			return fmt.Errorf("invalid exclude pattern %q: %w", p, err)
 		}
 	}
@@ -90,13 +91,14 @@ func Dir(sourceDir, outputFile string, opts DirOptions) error {
 	}
 	defer root.Close()
 
-	setupFile, err := resolveSetupFile(root, opts.SetupFile)
+	skip := outputPathInSource(sourceDir, outputFile)
+	setupFile, err := resolveSetupFile(root, opts.SetupFile, opts.Exclude, skip)
 	if err != nil {
 		return err
 	}
 	opts.SetupFile = setupFile
 
-	entries, err := collect(root, opts.Exclude, outputPathInSource(sourceDir, outputFile))
+	entries, err := collect(root, opts.Exclude, skip)
 	if err != nil {
 		return err
 	}
@@ -245,8 +247,9 @@ func (c *countWriter) Write(p []byte) (int, error) {
 }
 
 // resolveSetupFile validates the given setup file, or picks one when spec is empty.
-// The result is a slash-separated path relative to root.
-func resolveSetupFile(root *os.Root, spec string) (string, error) {
+// The result is a slash-separated path relative to root, spelled as in the file system.
+// When picking, files that are excluded or that are the output file (skip) are passed over.
+func resolveSetupFile(root *os.Root, spec string, exclude []string, skip string) (string, error) {
 	if spec != "" {
 		p := filepath.Clean(spec)
 		if !filepath.IsLocal(p) {
@@ -259,7 +262,7 @@ func resolveSetupFile(root *os.Root, spec string) (string, error) {
 		if !info.Mode().IsRegular() {
 			return "", fmt.Errorf("setup file is not a regular file: %s", spec)
 		}
-		return filepath.ToSlash(p), nil
+		return actualName(root, filepath.ToSlash(p)), nil
 	}
 
 	dirEntries, err := fs.ReadDir(root.FS(), ".")
@@ -268,7 +271,7 @@ func resolveSetupFile(root *os.Root, spec string) (string, error) {
 	}
 	for _, ext := range []string{".msi", ".exe"} {
 		for _, e := range dirEntries {
-			if !strings.EqualFold(path.Ext(e.Name()), ext) {
+			if !strings.EqualFold(path.Ext(e.Name()), ext) || e.Name() == skip || excluded(e.Name(), false, exclude) {
 				continue
 			}
 			if info, err := root.Stat(e.Name()); err == nil && info.Mode().IsRegular() {
@@ -277,6 +280,35 @@ func resolveSetupFile(root *os.Root, spec string) (string, error) {
 		}
 	}
 	return "", errors.New("no .msi or .exe file found at the top level of the source folder; specify the setup file explicitly")
+}
+
+// actualName returns name, an existing slash-separated path relative to root, with each
+// element spelled as listed in its directory. On case-insensitive file systems the user
+// may spell the setup file differently from the entries collected from the directory.
+func actualName(root *os.Root, name string) string {
+	fsys := root.FS()
+	dir := "."
+	for elem := range strings.SplitSeq(name, "/") {
+		entries, err := fs.ReadDir(fsys, dir)
+		if err != nil {
+			return name
+		}
+		match := ""
+		for _, e := range entries {
+			if e.Name() == elem {
+				match = elem
+				break
+			}
+			if match == "" && strings.EqualFold(e.Name(), elem) {
+				match = e.Name()
+			}
+		}
+		if match == "" {
+			return name
+		}
+		dir = path.Join(dir, match)
+	}
+	return dir
 }
 
 // outputPathInSource returns the slash-separated path of outputFile relative to
@@ -321,9 +353,15 @@ func containsFile(entries []entry, name string) bool {
 	return false
 }
 
-func excluded(name string, patterns []string) bool {
+func excluded(name string, isDir bool, patterns []string) bool {
 	base := path.Base(name)
 	for _, p := range patterns {
+		if dirOnly := strings.HasSuffix(p, "/"); dirOnly {
+			if !isDir {
+				continue
+			}
+			p = strings.TrimSuffix(p, "/")
+		}
 		if ok, _ := path.Match(p, name); ok {
 			return true
 		}
@@ -348,7 +386,7 @@ func collect(root *os.Root, exclude []string, skip string) ([]entry, error) {
 		if name == "." {
 			return nil
 		}
-		if name == skip || excluded(name, exclude) {
+		if name == skip || excluded(name, d.IsDir(), exclude) {
 			if d.IsDir() {
 				return fs.SkipDir
 			}
@@ -383,7 +421,27 @@ func collect(root *os.Root, exclude []string, skip string) ([]entry, error) {
 	if files == 0 {
 		return nil, errors.New("source folder contains no files")
 	}
-	return entries, nil
+	return pruneSkipParents(entries, skip), nil
+}
+
+// pruneSkipParents drops the directories leading to skip that are left empty because
+// skip was left out, so that writing the output into the source folder does not add
+// an empty directory to the package.
+func pruneSkipParents(entries []entry, skip string) []entry {
+	for dir := path.Dir(skip); skip != "" && dir != "."; dir = path.Dir(dir) {
+		empty := true
+		for _, e := range entries {
+			if strings.HasPrefix(e.name, dir+"/") {
+				empty = false
+				break
+			}
+		}
+		if !empty {
+			break
+		}
+		entries = slices.DeleteFunc(entries, func(e entry) bool { return e.dir && e.name == dir })
+	}
+	return entries
 }
 
 func writeZip(w io.Writer, root *os.Root, entries []entry) error {

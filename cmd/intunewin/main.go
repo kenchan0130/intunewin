@@ -64,7 +64,7 @@ level of the source folder is used.`,
 	}
 	packCmd.Flags().StringVarP(&packOpts.SetupFile, "setup-file", "s", "", "setup file, relative to the source folder (default: first .msi or .exe)")
 	packCmd.Flags().StringVarP(&packOpts.Name, "name", "n", "", "application name written to Detection.xml (default: setup file name)")
-	packCmd.Flags().StringArrayVarP(&packOpts.Exclude, "exclude", "e", nil, "glob pattern of files to exclude (repeatable)")
+	packCmd.Flags().StringArrayVarP(&packOpts.Exclude, "exclude", "e", nil, "glob pattern of files to exclude; a trailing / matches directories only (repeatable)")
 	packCmd.Flags().BoolVarP(&packOpts.Overwrite, "force", "f", false, "overwrite the output file if it exists")
 
 	unpackCmd := &cobra.Command{

@@ -30,11 +30,12 @@ type PackOptions = pack.Options
 // PackDirOptions configures PackDir. In addition to PackOptions:
 //
 //   - Exclude lists glob patterns (path.Match syntax) matched against each path
-//     relative to the source directory and against its base name.
+//     relative to the source directory and against its base name. A pattern ending
+//     in a slash matches directories only.
 //   - Overwrite allows replacing an existing output file.
 //
 // If SetupFile is empty, the first .msi, or else .exe, file at the top level of the
-// source directory is used.
+// source directory that is not excluded is used.
 type PackDirOptions = pack.DirOptions
 
 // Info is the content of a package's Detection.xml. EncryptionInfo holds the values

@@ -40,13 +40,30 @@ make build
 #### Pack a folder
 
 ```bash
-intunewin pack <source-folder> <output-file.intunewin>
+intunewin pack <source-folder> <output-file.intunewin> [flags]
 ```
 
-Example:
+| Flag | Description |
+| --- | --- |
+| `-s`, `--setup-file` | Setup file, relative to the source folder. Defaults to the first `.msi`, or else `.exe`, file at the top level of the source folder that is not excluded. Only the file name is written to `Detection.xml`. |
+| `-n`, `--name` | Application name written to `Detection.xml`. Defaults to the setup file name. |
+| `-e`, `--exclude` | Glob pattern of files or directories to exclude, matched against the relative path and the base name. A trailing `/` matches directories only (e.g. `build/`). Repeatable. |
+| `-f`, `--force` | Overwrite the output file if it already exists. |
+| `-q`, `--quiet` | Suppress progress messages (printed to stderr). |
+
+Examples:
+
 ```bash
 intunewin pack ./myapp ./dist/myapp.intunewin
+intunewin pack ./myapp ./dist/myapp.intunewin --setup-file install.cmd --exclude .DS_Store --exclude '*.log'
 ```
+
+Notes:
+
+- Symbolic links to files inside the source folder are stored as regular files. Links that point outside the source folder, and links to directories, are rejected.
+- If the output file is inside the source folder, it is not included in the package.
+- The output file is written atomically: it is renamed into place only after it is complete, so an existing output file is never left half-written. If the process is killed, a hidden temporary file (`.<output>.*.tmp`, `.intunewin-*.enc`) may be left next to the output.
+- Temporary files about as large as the content are created next to the output (not in the system temp directory).
 
 #### Unpack a file
 
@@ -54,99 +71,75 @@ intunewin pack ./myapp ./dist/myapp.intunewin
 intunewin unpack <input-file.intunewin> <output-folder>
 ```
 
-Example:
-```bash
-intunewin unpack myapp.intunewin ./extracted
-```
+The package is verified (HMAC, file digest and size from `Detection.xml`) before anything is extracted. Extraction is confined to the output folder.
 
-#### Help
+#### Help / version
 
 ```bash
 intunewin --help
+intunewin --version
 ```
 
 ### API
 
-You can use the intunewin package in your Go applications with a simple stream-based API:
+The `pkg/intunewin` package exposes a streaming API. Memory use does not depend on the package size. Because the format requires seeking, temporary files about as large as the content are used: next to the output for `PackDir`/`UnpackDir`, and in the system temp directory (`TMPDIR`) for `Pack`.
 
 ```go
 package main
 
 import (
-    "archive/zip"
-    "bytes"
-    "fmt"
-    "io"
+    "log"
     "os"
+
     "github.com/kenchan0130/intunewin/pkg/intunewin"
 )
 
 func main() {
-    // Pack: Create a zip archive first
-    zipBuf := new(bytes.Buffer)
-    zipWriter := zip.NewWriter(zipBuf)
-    
-    // Add files to zip
-    w1, _ := zipWriter.Create("app.exe")
-    w1.Write([]byte("executable content"))
-    
-    w2, _ := zipWriter.Create("config/settings.json")
-    w2.Write([]byte(`{"version": "1.0"}`))
-    
-    zipWriter.Close()
-    
-    // Pack the zip into intunewin format
-    packedReader, err := intunewin.PackReader(bytes.NewReader(zipBuf.Bytes()))
-    if err != nil {
-        fmt.Printf("Pack failed: %v\n", err)
-        return
+    // Folder to file
+    if err := intunewin.PackDir("./myapp", "myapp.intunewin", intunewin.PackDirOptions{
+        Options: intunewin.PackOptions{SetupFile: "setup.exe"},
+        Exclude: []string{".DS_Store"},
+    }); err != nil {
+        log.Fatal(err)
     }
-    
-    // Write to file
-    packedData, _ := io.ReadAll(packedReader)
-    os.WriteFile("myapp.intunewin", packedData, 0644)
-    
-    // Unpack: Extract zip from intunewin format
-    input, _ := os.ReadFile("myapp.intunewin")
-    
-    unpackedZipReader, err := intunewin.UnpackReader(bytes.NewReader(input))
+
+    // Read Detection.xml (including the values needed for a Microsoft Graph upload)
+    f, err := os.Open("myapp.intunewin")
     if err != nil {
-        fmt.Printf("Unpack failed: %v\n", err)
-        return
+        log.Fatal(err)
     }
-    
-    // Read the zip data
-    unpackedZipData, _ := io.ReadAll(unpackedZipReader)
-    
-    // Parse and extract files from zip
-    zipReader, _ := zip.NewReader(bytes.NewReader(unpackedZipData), int64(len(unpackedZipData)))
-    for _, file := range zipReader.File {
-        fmt.Printf("File: %s\n", file.Name)
-        rc, _ := file.Open()
-        content, _ := io.ReadAll(rc)
-        fmt.Printf("Content: %s\n", content)
-        rc.Close()
+    defer f.Close()
+    st, _ := f.Stat()
+    info, err := intunewin.ReadInfo(f, st.Size())
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Printf("name=%s setup=%s size=%d", info.Name, info.SetupFile, info.UnencryptedContentSize)
+
+    // File to folder
+    if err := intunewin.UnpackDir("myapp.intunewin", "./extracted"); err != nil {
+        log.Fatal(err)
     }
 }
 ```
 
 #### API Functions
 
-- `PackReader(zipReader io.Reader) (io.Reader, error)` - Takes a zip stream, returns encrypted intunewin package stream
-- `UnpackReader(input io.Reader) (io.Reader, error)` - Takes an intunewin stream, returns decrypted zip stream
-
-The API is designed for maximum flexibility:
-- Works with any zip data (created by `archive/zip` or other tools)
-- No file system dependencies in the low-level API
-- Caller controls how files are organized and structured
-- Streaming interface for efficient memory usage
+- `PackDir(sourceDir, outputFile string, opts PackDirOptions) error` - Packages a folder into a file.
+- `UnpackDir(inputFile, outputDir string) error` - Verifies and extracts a package into a folder.
+- `Pack(dst io.Writer, content io.Reader, opts PackOptions) error` - Packages a zip archive stream. `opts.SetupFile` is required.
+- `Unpack(dst io.Writer, src io.ReaderAt, size int64) (*Info, error)` - Verifies a package and writes its content (a zip archive) to `dst`. If it returns an error, discard what was written.
+- `ReadInfo(src io.ReaderAt, size int64) (*Info, error)` - Reads `Detection.xml` without decrypting.
+- `PackReader` / `UnpackReader` - Deprecated in-memory variants kept for compatibility.
 
 ## File Format
 
-The `.intunewin` file is a ZIP archive containing:
+The `.intunewin` file is a ZIP archive (entries stored uncompressed) containing:
 
-1. `Metadata/Detection.xml`: Contains encryption keys, file sizes, and hash information
-2. `Contents/IntunePackage.intunewin`: The encrypted and compressed source folder
+1. `IntuneWinPackage/Contents/IntunePackage.intunewin`: A ZIP archive of the source folder, encrypted as `[HMAC-SHA256 (32 bytes)][IV (16 bytes)][AES-256-CBC ciphertext]`, where the HMAC covers the IV and ciphertext
+2. `IntuneWinPackage/Metadata/Detection.xml`: Application name, setup file, unencrypted content size, and the encryption information (keys, IV, HMAC, SHA256 file digest)
+
+Packages created by this tool have the same layout and `Detection.xml` structure as those created by Microsoft's IntuneWinAppUtil 1.8.7 (checked against `testdata/IntuneWinAppUtil/install.intunewin`).
 
 ## Development
 

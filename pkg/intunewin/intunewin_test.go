@@ -1,164 +1,137 @@
-package intunewin
+package intunewin_test
 
 import (
-	"archive/zip"
 	"bytes"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
-	"github.com/kenchan0130/intunewin/internal/pack"
-	"github.com/kenchan0130/intunewin/internal/unpack"
+	"github.com/kenchan0130/intunewin/internal/testutil"
+	"github.com/kenchan0130/intunewin/pkg/intunewin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestPackAndUnpack(t *testing.T) {
-	// Create temporary test directory
-	tempDir := t.TempDir()
-	sourceDir := filepath.Join(tempDir, "source")
-	packedFile := filepath.Join(tempDir, "test.intunewin")
-	extractDir := filepath.Join(tempDir, "extracted")
+func TestPackUnpackRoundTrip(t *testing.T) {
+	content := testutil.MakeZip(t,
+		testutil.ZipEntry{Name: "setup.exe", Content: "exe"},
+		testutil.ZipEntry{Name: "config/settings.json", Content: `{"v":1}`},
+	)
+	var pkg bytes.Buffer
+	require.NoError(t, intunewin.Pack(&pkg, bytes.NewReader(content), intunewin.PackOptions{SetupFile: "setup.exe", Name: "My App"}))
 
-	// Create source directory with test files
-	require.NoError(t, os.MkdirAll(sourceDir, 0755))
-	testContent := []byte("Hello, World! This is a test file.")
-	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "test.txt"), testContent, 0600))
-	require.NoError(t, os.MkdirAll(filepath.Join(sourceDir, "subdir"), 0755))
-	testContent2 := []byte("Test file in subdirectory")
-	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "subdir", "test2.txt"), testContent2, 0600))
-
-	// Pack
-	err := pack.Pack(sourceDir, packedFile)
+	info, err := intunewin.ReadInfo(bytes.NewReader(pkg.Bytes()), int64(pkg.Len()))
 	require.NoError(t, err)
+	assert.Equal(t, "My App", info.Name)
+	assert.Equal(t, "setup.exe", info.SetupFile)
+	assert.Equal(t, int64(len(content)), info.UnencryptedContentSize)
+	assert.Len(t, info.EncryptionInfo.EncryptionKey, 32)
 
-	// Verify packed file exists
-	info, err := os.Stat(packedFile)
+	var out bytes.Buffer
+	info2, err := intunewin.Unpack(&out, bytes.NewReader(pkg.Bytes()), int64(pkg.Len()))
 	require.NoError(t, err)
-	assert.Greater(t, info.Size(), int64(0))
-
-	// Unpack
-	err = unpack.Unpack(packedFile, extractDir)
-	require.NoError(t, err)
-
-	// Verify extracted files
-	extractedFile := filepath.Join(extractDir, "test.txt")
-	content, err := os.ReadFile(extractedFile)
-	require.NoError(t, err)
-	assert.Equal(t, testContent, content)
-
-	extractedFile2 := filepath.Join(extractDir, "subdir", "test2.txt")
-	content2, err := os.ReadFile(extractedFile2)
-	require.NoError(t, err)
-	assert.Equal(t, testContent2, content2)
+	assert.Equal(t, content, out.Bytes())
+	assert.Equal(t, info, info2)
 }
 
-func TestPackWithNonExistentSource(t *testing.T) {
-	tempDir := t.TempDir()
-	sourceDir := filepath.Join(tempDir, "nonexistent")
-	outputFile := filepath.Join(tempDir, "output.intunewin")
+func TestPackDirUnpackDirRoundTrip(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "app")
+	files := map[string]string{"setup.msi": "msi", "sub/a.txt": "a", "sub/b/c.txt": "c"}
+	testutil.WriteFiles(t, src, files)
+	pkg := filepath.Join(t.TempDir(), "app.intunewin")
+	out := filepath.Join(t.TempDir(), "out")
 
-	err := pack.Pack(sourceDir, outputFile)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "does not exist")
+	require.NoError(t, intunewin.PackDir(src, pkg, intunewin.PackDirOptions{}))
+	require.NoError(t, intunewin.UnpackDir(pkg, out))
+	for name, want := range files {
+		got, err := os.ReadFile(filepath.Join(out, filepath.FromSlash(name)))
+		require.NoError(t, err)
+		assert.Equal(t, want, string(got))
+	}
 }
 
-func TestUnpackWithNonExistentFile(t *testing.T) {
-	tempDir := t.TempDir()
-	inputFile := filepath.Join(tempDir, "nonexistent.intunewin")
-	outputDir := filepath.Join(tempDir, "output")
-
-	err := unpack.Unpack(inputFile, outputDir)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "does not exist")
+func TestErrorsAreReturnedNotPanics(t *testing.T) {
+	bad := []byte("not a package")
+	_, err := intunewin.ReadInfo(bytes.NewReader(bad), int64(len(bad)))
+	require.Error(t, err)
+	_, err = intunewin.Unpack(io.Discard, bytes.NewReader(bad), int64(len(bad)))
+	require.Error(t, err)
+	require.Error(t, intunewin.Pack(io.Discard, bytes.NewReader(nil), intunewin.PackOptions{}))
 }
 
-func TestPackReaderAndUnpackReader(t *testing.T) {
-	// Create a zip archive in memory
-	zipBuf := new(bytes.Buffer)
-	zipWriter := zip.NewWriter(zipBuf)
-
-	// Add test.txt
-	w1, err := zipWriter.Create("test.txt")
+// The deprecated reader-based API keeps working.
+func TestDeprecatedReaderAPI(t *testing.T) {
+	content := testutil.MakeZip(t, testutil.ZipEntry{Name: "setup.exe", Content: "exe"})
+	packed, err := intunewin.PackReader(bytes.NewReader(content), "app", "setup.exe")
 	require.NoError(t, err)
-	_, err = w1.Write([]byte("Hello, World! This is test data for low-level API."))
+	unpacked, err := intunewin.UnpackReader(packed)
 	require.NoError(t, err)
-
-	// Add subdir/
-	_, err = zipWriter.Create("subdir/")
+	got, err := io.ReadAll(unpacked)
 	require.NoError(t, err)
+	assert.Equal(t, content, got)
 
-	// Add subdir/file2.txt
-	w2, err := zipWriter.Create("subdir/file2.txt")
+	// Earlier versions accepted an empty setup file; it now defaults to the name.
+	packed, err = intunewin.PackReader(bytes.NewReader(content), "app.exe", "")
 	require.NoError(t, err)
-	_, err = w2.Write([]byte("File in subdirectory"))
+	data, err := io.ReadAll(packed)
 	require.NoError(t, err)
-
-	require.NoError(t, zipWriter.Close())
-
-	// Pack using low-level API
-	packedReader, err := PackReader(bytes.NewReader(zipBuf.Bytes()), "test", "test.txt")
+	info, err := intunewin.ReadInfo(bytes.NewReader(data), int64(len(data)))
 	require.NoError(t, err)
+	assert.Equal(t, "app.exe", info.SetupFile)
 
-	// Read packed data
-	packedData, err := io.ReadAll(packedReader)
-	require.NoError(t, err)
-	assert.Greater(t, len(packedData), 0)
-
-	// Unpack using low-level API
-	unpackedZipReader, err := UnpackReader(bytes.NewReader(packedData))
-	require.NoError(t, err)
-
-	// Read unpacked zip data
-	unpackedZipData, err := io.ReadAll(unpackedZipReader)
-	require.NoError(t, err)
-
-	// Verify it's a valid zip
-	zipReader, err := zip.NewReader(bytes.NewReader(unpackedZipData), int64(len(unpackedZipData)))
-	require.NoError(t, err)
-	assert.Len(t, zipReader.File, 3)
-
-	// Verify files
-	assert.Equal(t, "test.txt", zipReader.File[0].Name)
-	assert.Equal(t, "subdir/", zipReader.File[1].Name)
-	assert.Equal(t, "subdir/file2.txt", zipReader.File[2].Name)
+	_, err = intunewin.UnpackReader(bytes.NewReader([]byte("x")))
+	require.Error(t, err)
 }
 
-func TestPackReaderWithMinimalData(t *testing.T) {
-	// Create minimal zip
-	zipBuf := new(bytes.Buffer)
-	zipWriter := zip.NewWriter(zipBuf)
+// patternReader yields n deterministic bytes without holding them in memory.
+type patternReader struct{ n, off int64 }
 
-	w, err := zipWriter.Create("minimal.txt")
-	require.NoError(t, err)
-	_, err = w.Write([]byte("x"))
-	require.NoError(t, err)
-	require.NoError(t, zipWriter.Close())
-
-	packedReader, err := PackReader(bytes.NewReader(zipBuf.Bytes()), "minimal", "minimal.txt")
-	require.NoError(t, err)
-
-	packedData, err := io.ReadAll(packedReader)
-	require.NoError(t, err)
-	assert.Greater(t, len(packedData), 0)
-
-	// Should be able to unpack minimal data
-	unpackedZipReader, err := UnpackReader(bytes.NewReader(packedData))
-	require.NoError(t, err)
-
-	unpackedZipData, err := io.ReadAll(unpackedZipReader)
-	require.NoError(t, err)
-
-	// Verify it's a valid zip
-	zipReader, err := zip.NewReader(bytes.NewReader(unpackedZipData), int64(len(unpackedZipData)))
-	require.NoError(t, err)
-	assert.Len(t, zipReader.File, 1)
+func (r *patternReader) Read(p []byte) (int, error) {
+	if r.off >= r.n {
+		return 0, io.EOF
+	}
+	p = p[:min(int64(len(p)), r.n-r.off)]
+	for i := range p {
+		p[i] = byte((r.off + int64(i)) * 31 >> 3) //nolint:gosec // truncation is intended
+	}
+	r.off += int64(len(p))
+	return len(p), nil
 }
 
-func TestUnpackReaderWithInvalidData(t *testing.T) {
-	invalidData := []byte("not a valid intunewin package")
+func allocated(f func()) uint64 {
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	f()
+	runtime.ReadMemStats(&after)
+	return after.TotalAlloc - before.TotalAlloc
+}
 
-	_, err := UnpackReader(bytes.NewReader(invalidData))
-	assert.Error(t, err)
+// Memory use must not grow with the package size (Intune packages can be many GB).
+func TestPackAndUnpackStreamWithBoundedMemory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("writes a large temporary file")
+	}
+	const size = 128 << 20
+	const limit = 16 << 20
+	pkgPath := filepath.Join(t.TempDir(), "big.intunewin")
+	f, err := os.Create(pkgPath)
+	require.NoError(t, err)
+	defer f.Close()
+
+	alloc := allocated(func() {
+		require.NoError(t, intunewin.Pack(f, &patternReader{n: size}, intunewin.PackOptions{SetupFile: "setup.exe"}))
+	})
+	assert.Less(t, alloc, uint64(limit), "Pack allocated %d bytes for %d bytes of content", alloc, size)
+
+	st, err := f.Stat()
+	require.NoError(t, err)
+	alloc = allocated(func() {
+		info, err := intunewin.Unpack(io.Discard, f, st.Size())
+		require.NoError(t, err)
+		assert.Equal(t, int64(size), info.UnencryptedContentSize)
+	})
+	assert.Less(t, alloc, uint64(limit), "Unpack allocated %d bytes for %d bytes of content", alloc, size)
 }

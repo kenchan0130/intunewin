@@ -1,6 +1,8 @@
 name: CI
 on:
   pull_request:
+  push:
+    branches: ["main"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -8,10 +10,21 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            race: "-race"
+          - os: macos-latest
+            race: "-race"
+          # -race on Windows needs a C toolchain; run without it there.
+          - os: windows-latest
+            race: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -21,11 +34,10 @@ jobs:
           go-version-file: ./go.mod
           cache: true
       - name: Get dependencies
-        run: |
-          make install
+        run: go mod download
       - name: Run test
-        run: |
-          make test
+        shell: bash
+        run: go test ${{ matrix.race }} -v -shuffle on ./...
 
   build:
     runs-on: ubuntu-latest

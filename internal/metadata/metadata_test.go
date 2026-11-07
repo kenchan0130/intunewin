@@ -1,157 +1,99 @@
 package metadata
 
 import (
+	"bytes"
+	"encoding/base64"
+	"strings"
 	"testing"
 
-	"github.com/kenchan0130/intunewin/internal/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestNew(t *testing.T) {
-	encInfo := &crypto.EncryptionInfo{
-		EncryptionKey:        make([]byte, 32),
-		MacKey:               make([]byte, 32),
-		InitializationVector: make([]byte, 16),
-		Mac:                  make([]byte, 32),
-		FileDigest:           make([]byte, 32),
-		ProfileIdentifier:    "ProfileVersion1",
-		FileDigestAlgorithm:  "SHA256",
+func sampleInfo() *Info {
+	return &Info{
+		ToolVersion:            ToolVersion,
+		Name:                   "setup.exe",
+		UnencryptedContentSize: 1234,
+		FileName:               ContentFileName,
+		SetupFile:              "setup.exe",
+		EncryptionInfo: EncryptionInfo{
+			EncryptionKey:        bytes.Repeat([]byte{1}, 32),
+			MacKey:               bytes.Repeat([]byte{2}, 32),
+			InitializationVector: bytes.Repeat([]byte{3}, 16),
+			Mac:                  bytes.Repeat([]byte{4}, 32),
+			ProfileIdentifier:    ProfileIdentifier,
+			FileDigest:           bytes.Repeat([]byte{5}, 32),
+			FileDigestAlgorithm:  FileDigestAlgorithm,
+		},
 	}
-
-	meta := New("test.zip", 1000, encInfo)
-
-	assert.Equal(t, "test.intunewin", meta.FileName)
-	assert.Equal(t, int64(1000), meta.UnencryptedFileSize)
-	assert.Equal(t, encInfo, meta.EncryptionInfo)
 }
 
-func TestToXML(t *testing.T) {
-	encInfo := &crypto.EncryptionInfo{
-		EncryptionKey:        []byte{1, 2, 3},
-		MacKey:               []byte{4, 5, 6},
-		InitializationVector: []byte{7, 8, 9},
-		Mac:                  []byte{10, 11, 12},
-		FileDigest:           []byte{13, 14, 15},
-		ProfileIdentifier:    "ProfileVersion1",
-		FileDigestAlgorithm:  "SHA256",
-	}
-
-	meta := New("test.zip", 1000, encInfo)
-
-	xmlData, err := meta.ToXML()
+func TestMarshalStructure(t *testing.T) {
+	data, err := Marshal(sampleInfo())
 	require.NoError(t, err)
-	assert.NotEmpty(t, xmlData)
-	assert.Contains(t, string(xmlData), "test.zip")
+	s := string(data)
+
+	assert.True(t, strings.HasPrefix(s, `<ApplicationInfo xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ToolVersion="1.8.7.0">`), s)
+	assert.NotContains(t, s, "<?xml")
+	assert.Equal(t, strings.Count(s, "\n"), strings.Count(s, "\r\n"), "line endings are CRLF, as IntuneWinAppUtil writes")
+	assert.NotContains(t, s, "<Description>", "empty Description must be omitted")
+
+	// Element order matters for some consumers; keep it identical to the reference
+	// implementation (simeoncloud/IntuneAppBuilder).
+	order := []string{
+		"<Name>setup.exe</Name>",
+		"<UnencryptedContentSize>1234</UnencryptedContentSize>",
+		"<FileName>IntunePackage.intunewin</FileName>",
+		"<SetupFile>setup.exe</SetupFile>",
+		"<EncryptionInfo>",
+		"<EncryptionKey>" + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32)) + "</EncryptionKey>",
+		"<MacKey>",
+		"<InitializationVector>",
+		"<Mac>",
+		"<ProfileIdentifier>ProfileVersion1</ProfileIdentifier>",
+		"<FileDigest>",
+		"<FileDigestAlgorithm>SHA256</FileDigestAlgorithm>",
+	}
+	pos := 0
+	for _, el := range order {
+		i := strings.Index(s[pos:], el)
+		require.GreaterOrEqual(t, i, 0, "%s missing or out of order", el)
+		pos += i + len(el)
+	}
 }
 
-func TestFromXML(t *testing.T) {
-	// Use longer byte slices to ensure they're valid
-	encInfo := &crypto.EncryptionInfo{
-		EncryptionKey:        make([]byte, 32),
-		MacKey:               make([]byte, 32),
-		InitializationVector: make([]byte, 16),
-		Mac:                  make([]byte, 32),
-		FileDigest:           make([]byte, 32),
-		ProfileIdentifier:    "ProfileVersion1",
-		FileDigestAlgorithm:  "SHA256",
-	}
-	// Fill with test data
-	for i := range encInfo.EncryptionKey {
-		encInfo.EncryptionKey[i] = byte(i)
-	}
-	for i := range encInfo.MacKey {
-		encInfo.MacKey[i] = byte(i + 32)
-	}
-	for i := range encInfo.InitializationVector {
-		encInfo.InitializationVector[i] = byte(i + 64)
-	}
-
-	meta := New("test.zip", 1000, encInfo)
-
-	xmlData, err := meta.ToXML()
+func TestRoundTrip(t *testing.T) {
+	in := sampleInfo()
+	in.Description = "desc"
+	data, err := Marshal(in)
 	require.NoError(t, err)
 
-	meta2, err := FromXML(xmlData)
+	out, err := Parse(data)
 	require.NoError(t, err)
-
-	// FileName is always "IntunePackage.intunewin" in the XML format
-	assert.Equal(t, "IntunePackage.intunewin", meta2.FileName)
-	assert.Equal(t, meta.Name, meta2.Name)
-	assert.Equal(t, meta.UnencryptedFileSize, meta2.UnencryptedFileSize)
-	assert.Equal(t, meta.EncryptionInfo.EncryptionKey, meta2.EncryptionInfo.EncryptionKey)
-	assert.Equal(t, meta.EncryptionInfo.MacKey, meta2.EncryptionInfo.MacKey)
-	assert.Equal(t, meta.EncryptionInfo.InitializationVector, meta2.EncryptionInfo.InitializationVector)
+	assert.Equal(t, in, out)
 }
 
-func TestValidate(t *testing.T) {
-	tests := []struct {
-		name      string
-		meta      *Metadata
-		wantError bool
-		errMsg    string
+func TestParseErrors(t *testing.T) {
+	valid, err := Marshal(sampleInfo())
+	require.NoError(t, err)
+	b64 := func(n int) string { return base64.StdEncoding.EncodeToString(make([]byte, n)) }
+	encKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
+
+	tests := map[string]struct {
+		xml  string
+		want string
 	}{
-		{
-			name: "Valid metadata",
-			meta: &Metadata{
-				FileName:            "test.zip",
-				UnencryptedFileSize: 1000,
-				EncryptionInfo: &crypto.EncryptionInfo{
-					EncryptionKey:        make([]byte, 32),
-					MacKey:               make([]byte, 32),
-					InitializationVector: make([]byte, 16),
-				},
-			},
-			wantError: false,
-		},
-		{
-			name: "Empty file name is allowed",
-			meta: &Metadata{
-				FileName:            "",
-				UnencryptedFileSize: 1000,
-				EncryptionInfo: &crypto.EncryptionInfo{
-					EncryptionKey:        make([]byte, 32),
-					MacKey:               make([]byte, 32),
-					InitializationVector: make([]byte, 16),
-				},
-			},
-			wantError: false,
-		},
-		{
-			name: "Invalid unencrypted size",
-			meta: &Metadata{
-				FileName:            "test.zip",
-				UnencryptedFileSize: 0,
-				EncryptionInfo: &crypto.EncryptionInfo{
-					EncryptionKey:        make([]byte, 32),
-					MacKey:               make([]byte, 32),
-					InitializationVector: make([]byte, 16),
-				},
-			},
-			wantError: true,
-			errMsg:    "unencryptedFileSize must be positive",
-		},
-		{
-			name: "Missing encryption info",
-			meta: &Metadata{
-				FileName:            "test.zip",
-				UnencryptedFileSize: 1000,
-				EncryptionInfo:      nil,
-			},
-			wantError: true,
-			errMsg:    "encryptionInfo is required",
-		},
+		"not xml":                {"not xml", "failed to parse"},
+		"missing EncryptionInfo": {"<ApplicationInfo><UnencryptedContentSize>1</UnencryptedContentSize></ApplicationInfo>", "no EncryptionInfo"},
+		"zero size":              {strings.Replace(string(valid), ">1234<", ">0<", 1), "UnencryptedContentSize"},
+		"overflowing size":       {strings.Replace(string(valid), ">1234<", ">9223372036854775807<", 1), "UnencryptedContentSize"},
+		"bad base64":             {strings.Replace(string(valid), encKey, "!!!", 1), "failed to decode EncryptionKey"},
+		"short key":              {strings.Replace(string(valid), encKey, b64(16), 1), "EncryptionKey must be 32 bytes"},
+		"wrong algorithm":        {strings.Replace(string(valid), ">SHA256<", ">MD5<", 1), "unsupported FileDigestAlgorithm"},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.meta.Validate()
-			if tt.wantError {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errMsg)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
+	for name, tt := range tests {
+		_, err := Parse([]byte(tt.xml))
+		assert.ErrorContains(t, err, tt.want, name)
 	}
 }

@@ -2,6 +2,7 @@
 package metadata
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/xml"
 	"errors"
@@ -14,7 +15,7 @@ import (
 
 const (
 	// ToolVersion is the IntuneWinAppUtil version this implementation identifies as.
-	ToolVersion = "1.4.0.0"
+	ToolVersion = "1.8.7.0"
 	// ContentFileName is the name of the encrypted content file inside the package.
 	ContentFileName = "IntunePackage.intunewin"
 	// ProfileIdentifier is the encryption profile used by IntuneWinAppUtil.
@@ -114,7 +115,9 @@ func Marshal(info *Info) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal Detection.xml: %w", err)
 	}
-	return out, nil
+	// IntuneWinAppUtil writes CRLF line endings. Newlines in values are escaped by the
+	// encoder, so every newline here is part of the indentation.
+	return bytes.ReplaceAll(out, []byte("\n"), []byte("\r\n")), nil
 }
 
 // Parse decodes and validates Detection.xml.

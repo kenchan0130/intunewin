@@ -136,8 +136,10 @@ func main() {
 
 The `.intunewin` file is a ZIP archive (entries stored uncompressed) containing:
 
-1. `IntuneWinPackage/Metadata/Detection.xml`: Application name, setup file, unencrypted content size, and the encryption information (keys, IV, HMAC, SHA256 file digest)
-2. `IntuneWinPackage/Contents/IntunePackage.intunewin`: A ZIP archive of the source folder, encrypted as `[HMAC-SHA256 (32 bytes)][IV (16 bytes)][AES-256-CBC ciphertext]`, where the HMAC covers the IV and ciphertext
+1. `IntuneWinPackage/Contents/IntunePackage.intunewin`: A ZIP archive of the source folder, encrypted as `[HMAC-SHA256 (32 bytes)][IV (16 bytes)][AES-256-CBC ciphertext]`, where the HMAC covers the IV and ciphertext
+2. `IntuneWinPackage/Metadata/Detection.xml`: Application name, setup file, unencrypted content size, and the encryption information (keys, IV, HMAC, SHA256 file digest)
+
+Packages created by this tool have the same layout and `Detection.xml` structure as those created by Microsoft's IntuneWinAppUtil 1.8.7 (checked against `testdata/IntuneWinAppUtil/install.intunewin`).
 
 ## Development
 

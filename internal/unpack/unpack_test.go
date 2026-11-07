@@ -242,12 +242,12 @@ func TestOpen_MalformedDetectionXML(t *testing.T) {
 	}
 }
 
-// IntuneWinAppUtil writes Detection.xml with a BOM, an XML declaration, CRLF line
-// endings, a newer ToolVersion and, for MSI setups, an MsiInfo element.
+// Detection.xml variants that other tools may write: a BOM, an XML declaration, CRLF
+// line endings, another ToolVersion and, for MSI setups, an MsiInfo element.
 func TestOpen_AcceptsIntuneWinAppUtilStyleDetectionXML(t *testing.T) {
 	pkg := makePackage(t, sample...)
 	data := editDetection(t, pkg, func(s string) string {
-		s = strings.Replace(s, `ToolVersion="1.4.0.0"`, `ToolVersion="1.8.6.0"`, 1)
+		s = strings.Replace(s, `ToolVersion="1.8.7.0"`, `ToolVersion="1.8.6.0"`, 1)
 		s = strings.Replace(s, "</EncryptionInfo>", "</EncryptionInfo>\n  <MsiInfo>\n    <MsiProductCode>{0}</MsiProductCode>\n  </MsiInfo>", 1)
 		s = strings.ReplaceAll(s, "\n", "\r\n")
 		return "\ufeff<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n" + s

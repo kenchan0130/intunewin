@@ -213,13 +213,14 @@ func write(dst io.Writer, tempDir string, opts Options, writeContent func(io.Wri
 		return fmt.Errorf("failed to rewind temporary file: %w", err)
 	}
 
-	// The outer zip entries are stored uncompressed, as IntuneWinAppUtil does.
+	// The outer zip entries are stored uncompressed and in the same order as
+	// IntuneWinAppUtil writes them.
 	zw := zip.NewWriter(dst)
 	now := time.Now()
-	if err := addStored(zw, metadata.DetectionPath, bytes.NewReader(detection), now); err != nil {
+	if err := addStored(zw, metadata.ContentPath, tmp, now); err != nil {
 		return err
 	}
-	if err := addStored(zw, metadata.ContentPath, tmp, now); err != nil {
+	if err := addStored(zw, metadata.DetectionPath, bytes.NewReader(detection), now); err != nil {
 		return err
 	}
 	if err := zw.Close(); err != nil {

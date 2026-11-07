@@ -34,8 +34,9 @@ func TestMarshalStructure(t *testing.T) {
 	require.NoError(t, err)
 	s := string(data)
 
-	assert.True(t, strings.HasPrefix(s, `<ApplicationInfo xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ToolVersion="1.4.0.0">`), s)
+	assert.True(t, strings.HasPrefix(s, `<ApplicationInfo xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ToolVersion="1.8.7.0">`), s)
 	assert.NotContains(t, s, "<?xml")
+	assert.Equal(t, strings.Count(s, "\n"), strings.Count(s, "\r\n"), "line endings are CRLF, as IntuneWinAppUtil writes")
 	assert.NotContains(t, s, "<Description>", "empty Description must be omitted")
 
 	// Element order matters for some consumers; keep it identical to the reference

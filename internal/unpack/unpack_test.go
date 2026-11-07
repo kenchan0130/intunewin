@@ -181,6 +181,23 @@ func TestDir_DoesNotFollowSymlinksOutOfOutputFolder(t *testing.T) {
 	assert.NoFileExists(t, filepath.Join(outside, "data.txt"))
 }
 
+func TestDir_ReplacesSymlinksInsteadOfWritingThroughThem(t *testing.T) {
+	out := t.TempDir()
+	victim := filepath.Join(out, "victim.txt")
+	require.NoError(t, os.WriteFile(victim, []byte("keep"), 0o600))
+	testutil.Symlink(t, "victim.txt", filepath.Join(out, "setup.exe"))
+
+	in := writePackage(t, makePackage(t, sample...))
+	require.NoError(t, unpack.Dir(in, out))
+
+	data, err := os.ReadFile(victim)
+	require.NoError(t, err)
+	assert.Equal(t, "keep", string(data), "the link target must not be overwritten")
+	info, err := os.Lstat(filepath.Join(out, "setup.exe"))
+	require.NoError(t, err)
+	assert.True(t, info.Mode().IsRegular(), "the link is replaced by the extracted file")
+}
+
 func TestDir_Permissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX permissions")

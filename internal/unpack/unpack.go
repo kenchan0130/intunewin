@@ -241,6 +241,13 @@ func extract(root *os.Root, f *zip.File) error {
 			return fmt.Errorf("failed to create directory for %s: %w", f.Name, err)
 		}
 	}
+	// An existing symbolic link is replaced rather than written through, so that it
+	// cannot redirect the write to another file in the output folder.
+	if info, err := root.Lstat(p); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+		if err := root.Remove(p); err != nil {
+			return fmt.Errorf("failed to replace symbolic link %s: %w", f.Name, err)
+		}
+	}
 	// Only permission bits are honored; setuid/setgid/sticky and file types are dropped.
 	out, err := root.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode.Perm()|0o600)
 	if err != nil {

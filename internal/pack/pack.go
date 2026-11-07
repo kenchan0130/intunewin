@@ -128,10 +128,34 @@ func Dir(sourceDir, outputFile string, opts DirOptions) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("failed to write output file: %w", err)
 	}
-	if err := os.Rename(tmp.Name(), outputFile); err != nil {
-		return fmt.Errorf("failed to write output file: %w", err)
+	if err := publish(tmp.Name(), outputFile, opts.Overwrite); err != nil {
+		return err
 	}
 	committed = true
+	return nil
+}
+
+// publish moves the complete file tmp to outputFile. Without overwrite, it fails if
+// outputFile exists, even when another process created it after the check in Dir.
+func publish(tmp, outputFile string, overwrite bool) error {
+	if !overwrite {
+		// A hard link is created atomically and never replaces an existing file.
+		err := os.Link(tmp, outputFile)
+		if err == nil {
+			_ = os.Remove(tmp)
+			return nil
+		}
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("output file already exists: %s (use --force to overwrite)", outputFile)
+		}
+		// The file system does not support hard links; fall back to check-then-rename.
+		if _, err := os.Lstat(outputFile); err == nil {
+			return fmt.Errorf("output file already exists: %s (use --force to overwrite)", outputFile)
+		}
+	}
+	if err := os.Rename(tmp, outputFile); err != nil {
+		return fmt.Errorf("failed to write output file: %w", err)
+	}
 	return nil
 }
 

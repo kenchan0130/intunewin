@@ -40,3 +40,5 @@ jobs:
         with:
           aqua_version: v2.66.1
       - run: ghalint run
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

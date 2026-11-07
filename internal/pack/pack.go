@@ -151,6 +151,8 @@ func publish(tmp, outputFile string, overwrite bool) error {
 		// The file system does not support hard links; fall back to check-then-rename.
 		if _, err := os.Lstat(outputFile); err == nil {
 			return fmt.Errorf("output file already exists: %s (use --force to overwrite)", outputFile)
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("failed to access output file: %w", err)
 		}
 	}
 	if err := os.Rename(tmp, outputFile); err != nil {

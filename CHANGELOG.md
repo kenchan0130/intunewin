@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.1](https://github.com/kenchan0130/intunewin/compare/v0.1.0...v0.1.1) - 2026-11-09
+
+- chore(deps): update reviewdog/action-actionlint action to v1.83.0 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/75
+
 ## [v0.1.0](https://github.com/kenchan0130/intunewin/compare/v0.0.7...v0.1.0) - 2026-11-07
 
 - chore(deps): update songmu/tagpr action to v1.21.2 by @renovate[bot] in https://github.com/kenchan0130/intunewin/pull/49
